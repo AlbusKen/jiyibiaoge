@@ -1,0 +1,46 @@
+## 更新日志 - [2025-06-05]
+
+### 功能增强与逻辑调整：分步填表流程优化
+
+本次更新主要针对“分步填表”（Two-Step Summary）功能进行了重构，使其采纳与“普通表格整理”相似的增量更新机制，并调整了提示词模板的使用逻辑。
+
+**详细变更点：**
+
+1.  **`components/formManager.js`**
+    *   修改 `Form` 类构造函数，增加可选的 `updateCallback` 参数，用于表单数据变化时的回调，允许外部实时获取数据变更，而非仅在表单提交后获取完整数据。
+
+2.  **`tsconfig.json`**
+    *   在 `compilerOptions` 中添加 `"allowJs": true`。
+    *   更新 `include` 数组，使其同时包含 `*.js` 和 `*.ts` 文件，以适应项目中 JavaScript 文件为主的情况并解决 TypeScript 编译器的输入文件警告。
+
+3.  **`scripts/runtime/separateTableUpdate.js` (`TableTwoStepSummary` 函数)**
+    *   **移除模板选择UI**: 不再为分步总结提供独立的模板选择界面。
+    *   **调用逻辑变更**: 修改为调用 `absoluteRefresh.js` 中的 `executeIncrementalUpdateFromSummary` 函数。
+    *   **参数传递**: 向 `executeIncrementalUpdateFromSummary` 传递一个 `isStepByStepSummary` 布尔标志（设为 `true`），以表明当前是分步总结流程。
+    *   **API选择**: 分步总结时使用的API（主API或备用API）现在由 `USER.tableBaseSetting.step_by_step_use_main_api` 控制。
+
+4.  **`scripts/runtime/absoluteRefresh.js`**
+    *   **导出 `sheetsToTables` 函数**: 确保此辅助函数可供外部模块使用。
+    *   **创建/重构 `executeIncrementalUpdateFromSummary` 函数**:
+        *   此函数现在作为统一的入口，处理普通表格整理和分步总结的增量更新逻辑。
+        *   **提示词构建逻辑调整**:
+            *   **System Prompt**:
+                *   若为分步总结模式 (`isStepByStepSummary === true`)：优先使用新增的 `USER.tableBaseSetting.step_by_step_system_prompt`。如果该设置为空，则回退使用 `USER.tableBaseSetting.refresh_system_message_template`。
+                *   若为普通表格整理模式：直接使用 `USER.tableBaseSetting.refresh_system_message_template`。
+            *   **User Prompt**: 两种模式下均统一使用 `USER.tableBaseSetting.refresh_user_message_template`。
+        *   **核心逻辑复用**: 复用了原 `refreshTableActions` 中的API调用、响应清洗、JSON指令解析（insert, update, delete）、表格操作执行、用户确认弹窗以及UI刷新等逻辑。
+
+5.  **`data/pluginSetting.js` (`defaultSettings`)**
+    *   **新增设置项**: 在 `USER.tableBaseSetting` 下添加了 `step_by_step_system_prompt`，并为其设置了默认的提示词内容，该提示词指导AI基于表格数据和聊天历史生成JSON格式的表格操作指令。
+    *   **注释更新**: 修改了 `rebuild_message_template_list` 和 `lastSelectedTemplate` 的注释，明确指出这些是用于“完整重构”（full rebuild）表格时的模板。
+
+6.  **`scripts/settings/userExtensionSetting.js`**
+    *   **UI加载**: 在 `renderSetting()` 函数中，增加了从 `USER.tableBaseSetting.step_by_step_system_prompt` 加载值到对应设置界面文本域的逻辑。
+    *   **UI保存**: 在 `InitBinging()` 函数中，为ID为 `step_by_step_system_prompt` 的文本域添加了 `input` 事件监听，当用户修改时，将新值保存到 `USER.tableBaseSetting.step_by_step_system_prompt`。
+
+7.  **`assets/templates/index.html` (插件设置主界面)**
+    *   **新增UI元素**: 在“分步填表”的设置区域内（`id="step_by_step_options"`），于“触发阈值字数”和“字数累加”选项之间，插入了一个新的 `<textarea>` 元素（ID为 `step_by_step_system_prompt`）。
+    *   该文本域用于用户配置“分步总结系统预设”，并附带了相应的 `<label>` 和 `<small>` 描述文本，解释了其用途和可用宏指令 (`$0` 代表当前表格数据, `$1` 代表聊天记录)。
+
+**目标效果：**
+这些修改旨在使分步总结功能更加灵活和强大，允许用户为其配置独立的系统级破限提示，同时利用与常规表格整理相同的、更精细化的增量更新机制，避免了不必要的全表重新生成，提高了效率和准确性。
